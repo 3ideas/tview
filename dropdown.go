@@ -335,6 +335,24 @@ func (d *DropDown) SetOptions(texts []string, selected func(text string, index i
 	return d
 }
 
+// SetOptionsWithStyles replaces all current options with the ones provided, along with their styles,
+// and installs one callback function which is called when one of the options is selected.
+// It will be called with the option's text and its index into the options slice.
+// The "selected" parameter may be nil.
+func (d *DropDown) SetOptionsWithStyles(texts []string, styles []tcell.Style, selected func(text string, index int)) *DropDown {
+	d.list.Clear()
+	d.options = nil
+	for i, text := range texts {
+		style := tcell.StyleDefault
+		if i < len(styles) {
+			style = styles[i]
+		}
+		d.AddOptionWithStyle(text, nil, style)
+	}
+	d.selected = selected
+	return d
+}
+
 // GetOptionCount returns the number of options in the drop-down.
 func (d *DropDown) GetOptionCount() int {
 	return len(d.options)
@@ -792,6 +810,7 @@ func (d *DropDown) AddOptionWithStyle(text string, selected func(), style tcell.
 		Selected: selected,
 		Style:    style,
 	})
-	d.list.AddItem(d.optionPrefix+text+d.optionSuffix, "", 0, nil)
+	// Add the item to the list with the same style
+	d.list.AddItemWithStyle(d.optionPrefix+text+d.optionSuffix, "", 0, nil, style)
 	return d
 }
