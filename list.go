@@ -823,3 +823,16 @@ func (l *List) SetItemColor(index int, color tcell.Color) *List {
 	l.items[index].Style = style.Foreground(color)
 	return l
 }
+
+// AddItemWithStyle adds a new item to the list. The "selected" callback is called when
+// the item is selected. The style parameter sets the item's text style.
+func (l *List) AddItemWithStyle(mainText, secondaryText string, shortcut rune, selected func(), style tcell.Style) *List {
+	l.items = append(l.items, &listItem{
+		MainText:      mainText,
+		SecondaryText: secondaryText,
+		Shortcut:      shortcut,
+		Selected:      selected,
+		Style:         style,
+	})
+	return l
+}
