@@ -7,7 +7,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// DropDownOption is one option that can be selected in a drop-down primitive.
+// dropDownOption is one option that can be selected in a drop-down primitive.
 type dropDownOption struct {
 	Text     string      // The text to be displayed in the drop-down.
 	Selected func()      // The (optional) callback for when this option was selected.
@@ -97,13 +97,10 @@ type DropDown struct {
 func NewDropDown() *DropDown {
 	list := NewList()
 	list.ShowSecondaryText(false).
-		SetMainTextStyle(tcell.StyleDefault.Background(Styles.MoreContrastBackgroundColor).Foreground(Styles.PrimaryTextColor)).
+		SetMainTextStyle(tcell.StyleDefault.Background(Styles.MoreContrastBackgroundColor).Foreground(Styles.PrimitiveBackgroundColor)).
 		SetSelectedStyle(tcell.StyleDefault.Background(Styles.PrimaryTextColor).Foreground(Styles.PrimitiveBackgroundColor)).
 		SetHighlightFullLine(true).
 		SetBackgroundColor(Styles.MoreContrastBackgroundColor)
-
-	// Enable style tags for the list
-	list.SetUseStyleTags(true, true)
 
 	prefix := NewInputField()
 
@@ -268,7 +265,6 @@ func (d *DropDown) SetListStyles(unselected, selected tcell.Style) *DropDown {
 	d.list.SetMainTextStyle(unselected).SetSelectedStyle(selected)
 	_, bg, _ := unselected.Decompose()
 	d.list.SetBackgroundColor(bg)
-	d.list.SetHighlightFullLine(false) // Ensure we don't highlight the full line
 	return d
 }
 
@@ -320,14 +316,8 @@ func (d *DropDown) SetDisabled(disabled bool) FormItem {
 // AddOption adds a new selectable option to this drop-down. The "selected"
 // callback is called when this option was selected. It may be nil.
 func (d *DropDown) AddOption(text string, selected func()) *DropDown {
-	option := &dropDownOption{Text: text, Selected: selected}
-	d.options = append(d.options, option)
-	// Add the item to the list first
-	d.list.AddItem(d.optionPrefix+text+d.optionSuffix, "", 0, nil)
-	// Set the style on the list item if it's not the default
-	if option.Style != tcell.StyleDefault {
-		d.list.SetItemStyle(len(d.options)-1, option.Style)
-	}
+	d.options = append(d.options, &dropDownOption{Text: text, Selected: selected})
+	d.list.AddItemWithStyle(d.optionPrefix+text+d.optionSuffix, "", 0, nil, tcell.StyleDefault)
 	return d
 }
 
@@ -342,42 +332,6 @@ func (d *DropDown) SetOptions(texts []string, selected func(text string, index i
 		d.AddOption(text, nil)
 	}
 	d.selected = selected
-
-	return d
-}
-
-// SetOptionsStyle sets the options with their respective styles. The texts and styles
-// slices must have the same length. The selected callback is called when an option
-// is selected.
-func (d *DropDown) SetOptionsStyle(texts []string, styles []tcell.Style, selected func(text string, index int)) *DropDown {
-	d.SetOptions(texts, selected)
-	if len(styles) != len(texts) {
-		panic("styles and texts must be the same length")
-	}
-	for index, option := range d.options {
-		option.Style = styles[index]
-		d.list.SetItemStyle(index, styles[index])
-	}
-	return d
-}
-
-// SetOptionsColor is a convenience method that sets just the foreground color
-// while preserving other style attributes. The texts and colors slices must
-// have the same length.
-func (d *DropDown) SetOptionsColor(texts []string, colors []tcell.Color, selected func(text string, index int)) *DropDown {
-	d.SetOptions(texts, selected)
-	if len(colors) != len(texts) {
-		panic("colors and texts must be the same length")
-	}
-	for index, option := range d.options {
-		// Create a new style based on the list's main text style
-		style := d.list.mainTextStyle.Foreground(colors[index])
-		option.Style = style
-		// Set both the style and text for the list item
-		d.list.SetItemStyle(index, style)
-		// Set the text with the style
-		d.list.SetItemText(index, texts[index], "")
-	}
 	return d
 }
 
@@ -525,7 +479,20 @@ func (d *DropDown) Draw(screen tcell.Screen) {
 					if !useStyleTags {
 						text = Escape(text)
 					}
-					_, _, corWidth = printWithStyle(screen, text, x+copWidth+prefixWidth, y, prefixWidth, fieldWidth-copWidth-prefixWidth, AlignLeft, d.fieldStyle, false)
+					style := d.fieldStyle
+					if d.options[currentItem].Style != tcell.StyleDefault {
+						// Get the attributes from the custom style
+						fg, bg, attrs := d.options[currentItem].Style.Decompose()
+						// Apply them to the base style
+						if fg != tcell.ColorDefault {
+							style = style.Foreground(fg)
+						}
+						if bg != tcell.ColorDefault {
+							style = style.Background(bg)
+						}
+						style = style.Attributes(attrs)
+					}
+					_, _, corWidth = printWithStyle(screen, text, x+copWidth+prefixWidth, y, prefixWidth, fieldWidth-copWidth-prefixWidth, AlignLeft, style, false)
 				}
 				if copWidth+prefixWidth+corWidth < fieldWidth {
 					// And finally the current option suffix.
@@ -536,13 +503,26 @@ func (d *DropDown) Draw(screen tcell.Screen) {
 	} else {
 		// The drop-down is closed. Just draw the selected option.
 		text := d.noSelection
+		style := fieldStyle
 		if d.currentOption >= 0 && d.currentOption < len(d.options) {
 			text = d.currentOptionPrefix + d.options[d.currentOption].Text + d.currentOptionSuffix
+			if d.options[d.currentOption].Style != tcell.StyleDefault {
+				// Get the attributes from the custom style
+				fg, bg, attrs := d.options[d.currentOption].Style.Decompose()
+				// Apply them to the base style
+				if fg != tcell.ColorDefault {
+					style = style.Foreground(fg)
+				}
+				if bg != tcell.ColorDefault {
+					style = style.Background(bg)
+				}
+				style = style.Attributes(attrs)
+			}
 		}
 		if !useStyleTags {
 			text = Escape(text)
 		}
-		printWithStyle(screen, text, x, y, 0, fieldWidth, AlignLeft, fieldStyle, false)
+		printWithStyle(screen, text, x, y, 0, fieldWidth, AlignLeft, style, false)
 	}
 
 	// Draw options list.
@@ -668,20 +648,8 @@ func (d *DropDown) openList(setFocus func(Primitive)) {
 		}
 	}).SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch key := event.Key(); key {
-		case tcell.KeyDown, tcell.KeyUp, tcell.KeyPgDn, tcell.KeyPgUp, tcell.KeyHome, tcell.KeyEnd: // Basic list navigation.
+		case tcell.KeyDown, tcell.KeyUp, tcell.KeyPgDn, tcell.KeyPgUp, tcell.KeyHome, tcell.KeyEnd, tcell.KeyEnter: // Basic list navigation.
 			break
-		case tcell.KeyEnter: // Select the current item.
-			if d.currentOption >= 0 && d.currentOption < len(d.options) {
-				item := d.options[d.currentOption]
-				if item.Selected != nil {
-					item.Selected()
-				}
-				if d.selected != nil {
-					d.selected(item.Text, d.currentOption)
-				}
-				d.closeList(setFocus)
-			}
-			return nil
 		case tcell.KeyEscape: // Abort selection.
 			d.closeList(setFocus)
 			return nil
@@ -746,9 +714,8 @@ func (d *DropDown) MouseHandler() func(action MouseAction, event *tcell.EventMou
 		// Was the mouse event in the drop-down box itself (or on its label)?
 		x, y := event.Position()
 		inRect := d.InInnerRect(x, y)
-
 		if !d.open && !inRect {
-			return false, nil // No, and it's not expanded either. Ignore.
+			return d.InRect(x, y), nil // No, and it's not expanded either. Ignore.
 		}
 
 		// As long as the drop-down is open, we capture all mouse events.
@@ -798,4 +765,33 @@ func (d *DropDown) PasteHandler() func(pastedText string, setFocus func(p Primit
 		// Forward the pasted text to the input field.
 		d.prefix.PasteHandler()(pastedText, setFocus)
 	})
+}
+
+// SetOptionStyle sets the style of the option at the given index. Panics if the index is out of range.
+func (d *DropDown) SetOptionStyle(index int, style tcell.Style) *DropDown {
+	d.options[index].Style = style
+	return d
+}
+
+// SetOptionColor sets the color of the option at the given index. Panics if the index is out of range.
+// This is a convenience method that sets just the foreground color while preserving other style attributes.
+func (d *DropDown) SetOptionColor(index int, color tcell.Color) *DropDown {
+	style := d.options[index].Style
+	if style == tcell.StyleDefault {
+		style = d.fieldStyle
+	}
+	d.options[index].Style = style.Foreground(color)
+	return d
+}
+
+// AddOptionWithStyle adds a new selectable option to this drop-down with a custom style.
+// The "selected" callback is called when this option was selected. It may be nil.
+func (d *DropDown) AddOptionWithStyle(text string, selected func(), style tcell.Style) *DropDown {
+	d.options = append(d.options, &dropDownOption{
+		Text:     text,
+		Selected: selected,
+		Style:    style,
+	})
+	d.list.AddItem(d.optionPrefix+text+d.optionSuffix, "", 0, nil)
+	return d
 }
