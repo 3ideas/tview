@@ -9,10 +9,11 @@ import (
 
 // listItem represents one item in a List.
 type listItem struct {
-	MainText      string // The main text of the list item.
-	SecondaryText string // A secondary text to be shown underneath the main text.
-	Shortcut      rune   // The key to select the list item directly, 0 if there is no shortcut.
-	Selected      func() // The optional function which is called when the item is selected.
+	MainText      string      // The main text of the list item.
+	SecondaryText string      // A secondary text to be shown underneath the main text.
+	Shortcut      rune        // The key to select the list item directly, 0 if there is no shortcut.
+	Selected      func()      // The optional function which is called when the item is selected.
+	Style         tcell.Style // The style of the item's text.
 }
 
 // List displays rows of items, each of which can be selected. List items can be
@@ -391,6 +392,7 @@ func (l *List) InsertItem(index int, mainText, secondaryText string, shortcut ru
 		SecondaryText: secondaryText,
 		Shortcut:      shortcut,
 		Selected:      selected,
+		Style:         tcell.StyleDefault,
 	}
 
 	// Shift index to range.
@@ -562,6 +564,19 @@ func (l *List) Draw(screen tcell.Screen) {
 		if selected {
 			style = l.selectedStyle
 		}
+		// Apply custom style if set
+		if item.Style != tcell.StyleDefault {
+			// Get the attributes from the custom style
+			fg, bg, attrs := item.Style.Decompose()
+			// Apply them to the base style
+			if fg != tcell.ColorDefault {
+				style = style.Foreground(fg)
+			}
+			if bg != tcell.ColorDefault {
+				style = style.Background(bg)
+			}
+			style = style.Attributes(attrs)
+		}
 		mainText := item.MainText
 		if !l.mainStyleTags {
 			mainText = Escape(mainText)
@@ -589,7 +604,21 @@ func (l *List) Draw(screen tcell.Screen) {
 			if !l.secondaryStyleTags {
 				secondaryText = Escape(secondaryText)
 			}
-			_, _, printedWidth := printWithStyle(screen, secondaryText, x, y, l.horizontalOffset, width, AlignLeft, l.secondaryTextStyle, false)
+			// Apply custom style to secondary text as well
+			secondaryStyle := l.secondaryTextStyle
+			if item.Style != tcell.StyleDefault {
+				// Get the attributes from the custom style
+				fg, bg, attrs := item.Style.Decompose()
+				// Apply them to the base style
+				if fg != tcell.ColorDefault {
+					secondaryStyle = secondaryStyle.Foreground(fg)
+				}
+				if bg != tcell.ColorDefault {
+					secondaryStyle = secondaryStyle.Background(bg)
+				}
+				secondaryStyle = secondaryStyle.Attributes(attrs)
+			}
+			_, _, printedWidth := printWithStyle(screen, secondaryText, x, y, l.horizontalOffset, width, AlignLeft, secondaryStyle, false)
 			if printedWidth > maxWidth {
 				maxWidth = printedWidth
 			}
@@ -776,4 +805,21 @@ func (l *List) MouseHandler() func(action MouseAction, event *tcell.EventMouse, 
 
 		return
 	})
+}
+
+// SetItemStyle sets the style of the item at the given index. Panics if the index is out of range.
+func (l *List) SetItemStyle(index int, style tcell.Style) *List {
+	l.items[index].Style = style
+	return l
+}
+
+// SetItemColor sets the color of the item at the given index. Panics if the index is out of range.
+// This is a convenience method that sets just the foreground color while preserving other style attributes.
+func (l *List) SetItemColor(index int, color tcell.Color) *List {
+	style := l.items[index].Style
+	if style == tcell.StyleDefault {
+		style = l.mainTextStyle
+	}
+	l.items[index].Style = style.Foreground(color)
+	return l
 }

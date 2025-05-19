@@ -1,4 +1,4 @@
-module github.com/rivo/tview
+module github.com/3ideas/tview
 
 go 1.18
 
